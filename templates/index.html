@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>merge.pilani</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .ql-container { height: 200px; font-size: 14px; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-btn.active { border-left: 4px solid #3b82f6; background-color: #f8fafc; color: #1d4ed8; font-weight: 600;}
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-screen flex overflow-hidden">
+
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col">
+        <div class="h-16 flex items-center px-6 border-b border-slate-200">
+            <h1 class="text-xl font-bold text-blue-600 tracking-tight">merge.pilani</h1>
+        </div>
+        <nav class="flex-1 p-4 space-y-1">
+            <button onclick="switchTab('compose')" id="btn-compose" class="tab-btn active w-full text-left px-4 py-3 rounded-r-md text-slate-600 hover:bg-slate-50">✍️ Compose</button>
+            <button onclick="switchTab('inbox'); loadData();" id="btn-inbox" class="tab-btn w-full text-left px-4 py-3 rounded-r-md text-slate-600 hover:bg-slate-50">📥 Smart Inbox</button>
+            <button onclick="switchTab('analytics'); loadData();" id="btn-analytics" class="tab-btn w-full text-left px-4 py-3 rounded-r-md text-slate-600 hover:bg-slate-50">📊 Analytics</button>
+            <button onclick="switchTab('history'); loadData();" id="btn-history" class="tab-btn w-full text-left px-4 py-3 rounded-r-md text-slate-600 hover:bg-slate-50">🗂️ History</button>
+            <button onclick="switchTab('blacklist'); loadData();" id="btn-blacklist" class="tab-btn w-full text-left px-4 py-3 rounded-r-md text-slate-600 hover:bg-slate-50">🛑 Blacklist</button>
+            <button onclick="switchTab('settings')" id="btn-settings" class="tab-btn w-full text-left px-4 py-3 rounded-r-md text-slate-600 hover:bg-slate-50">⚙️ Settings</button>
+        </nav>
+        <div class="p-4 border-t border-slate-200 text-sm">
+            {% if is_auth %}
+                <span class="flex items-center text-green-600"><div class="w-2 h-2 rounded-full bg-green-500 mr-2"></div> Google Connected</span>
+            {% else %}
+                <span class="flex items-center text-red-500"><div class="w-2 h-2 rounded-full bg-red-500 mr-2"></div> Not Connected</span>
+            {% endif %}
+        </div>
+    </aside>
+
+    <main class="flex-1 overflow-y-auto p-8 relative">
+        
+        <div id="progressBanner" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 w-full max-w-2xl bg-white shadow-xl rounded-lg p-4 border border-blue-200 z-40">
+            <div class="flex justify-between text-sm font-medium mb-2">
+                <span id="progressText" class="text-blue-600">Sending Campaign...</span>
+                <span id="progressCount">0 / 0</span>
+            </div>
+            <div class="w-full bg-slate-200 rounded-full h-2.5">
+                <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div id="missingDataModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+                <h3 class="text-xl font-bold text-red-600 mb-2">⚠️ Missing Data Detected</h3>
+                <p class="text-sm text-slate-600 mb-4">Your spreadsheet is missing values for variables used in your template. Please fill them in to continue sending.</p>
+                <div id="missingDataList" class="overflow-y-auto flex-1 space-y-4 mb-4 pr-2">
+                    </div>
+                <div class="flex justify-end space-x-3 pt-4 border-t">
+                    <button type="button" onclick="document.getElementById('missingDataModal').classList.add('hidden')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-md">Cancel Campaign</button>
+                    <button type="button" onclick="applyCorrectionsAndResubmit()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium">Apply & Send Campaign</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-compose" class="tab-content active max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">Create Campaign</h2>
+            <form id="campaignForm" class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-5">
+                <input type="hidden" name="corrections" id="correctionsInput" value="{}">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Contacts (.csv/.xlsx)</label>
+                        <input type="file" name="contacts" id="contactsFile" accept=".csv, .xlsx" required class="block w-full text-sm file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Attachments</label>
+                        <input type="file" name="attachments" multiple class="block w-full text-sm file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-slate-50 hover:file:bg-slate-100 border rounded-md">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Subject</label>
+                    <input type="text" name="subject" required class="w-full border border-slate-300 rounded-md px-4 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Email Body</label>
+                    <div id="main-editor" class="bg-white rounded-b-md"></div>
+                    <input type="hidden" name="body" id="body-hidden">
+                </div>
+                <div class="border-t border-slate-200 pt-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-medium text-slate-800">Automated Follow-up</h3>
+                        <input type="number" name="follow_days" placeholder="Days to wait (0 to disable)" class="w-48 border border-slate-300 rounded-md px-3 py-1 text-sm">
+                    </div>
+                    <div id="follow-editor" class="bg-white rounded-b-md" style="height: 100px;"></div>
+                    <input type="hidden" name="follow_body" id="follow-hidden">
+                </div>
+                <div class="border-t border-slate-200 pt-5 flex justify-between items-center">
+                    <input type="datetime-local" name="scheduled_for" class="border border-slate-300 rounded-md px-3 py-1.5 text-sm" title="Schedule Date">
+                    <div class="space-x-2">
+                        <button type="button" onclick="submitCampaign('test')" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-md font-medium transition">Test Send</button>
+                        <button type="button" onclick="submitCampaign('send')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium shadow-sm transition">Launch Campaign</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div id="tab-inbox" class="tab-content max-w-5xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">Smart Inbox (Replies Only)</h2>
+            <div id="inboxContainer" class="space-y-4"></div>
+        </div>
+
+        <div id="tab-analytics" class="tab-content max-w-5xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">Campaign Performance</h2>
+            <div class="grid grid-cols-3 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <p class="text-sm text-slate-500 font-medium uppercase">Total Sent</p>
+                    <p id="stat-sent" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <p class="text-sm text-slate-500 font-medium uppercase">Total Replies</p>
+                    <p id="stat-replied" class="text-4xl font-bold text-green-600 mt-2">0</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <p class="text-sm text-slate-500 font-medium uppercase">Follow-ups Triggered</p>
+                    <p id="stat-followups" class="text-4xl font-bold text-blue-600 mt-2">0</p>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm w-full max-w-2xl mx-auto flex justify-center">
+                <canvas id="conversionChart" style="max-height: 400px;"></canvas>
+            </div>
+        </div>
+
+        <div id="tab-blacklist" class="tab-content max-w-3xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">Do Not Contact List</h2>
+            <div class="bg-white p-6 rounded-xl border shadow-sm mb-6">
+                <div class="flex space-x-3">
+                    <input type="email" id="newBlacklistEmail" placeholder="Enter email to block..." class="flex-1 border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none rounded-md px-4 py-2">
+                    <button onclick="addToBlacklist()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md font-medium transition">Add to Blocklist</button>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <ul id="blacklistContainer" class="divide-y divide-slate-200"></ul>
+            </div>
+        </div>
+
+        <div id="tab-history" class="tab-content max-w-5xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">Delivery Log</h2>
+            <div class="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+                <table class="w-full text-left text-sm whitespace-nowrap">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="p-4 font-semibold text-slate-600">Date</th>
+                            <th class="p-4 font-semibold text-slate-600">Recipient</th>
+                            <th class="p-4 font-semibold text-slate-600">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTable" class="divide-y divide-slate-200"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="tab-settings" class="tab-content max-w-3xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">Configuration</h2>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-8">
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-800 mb-2">1. Google Cloud Credentials</h3>
+                    <p class="text-sm text-slate-500 mb-4">Upload the <code>credentials.json</code> file generated from your Google Cloud Console.</p>
+                    <div class="flex items-center space-x-4">
+                        <input type="file" id="credFile" accept=".json" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-slate-50 file:text-slate-700 hover:file:bg-slate-100 border border-slate-200 rounded-md">
+                        <button onclick="uploadCreds()" class="whitespace-nowrap bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-md transition">Upload File</button>
+                    </div>
+                    <p id="cred-status" class="text-sm mt-2 font-medium {% if has_creds %}text-green-600{% else %}text-red-500{% endif %}">
+                        {% if has_creds %}✓ credentials.json is securely loaded.{% else %}✗ Missing credentials.json{% endif %}
+                    </p>
+                </div>
+
+                <hr class="border-slate-200">
+
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-800 mb-2">2. Google Account Authentication</h3>
+                    <p class="text-sm text-slate-500 mb-4">Authorize this application to send emails on your behalf.</p>
+                    
+                    <div class="flex space-x-3">
+                        <button onclick="authenticateGoogle()" class="flex items-center bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-2 px-4 rounded-md shadow-sm transition">
+                            <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                            {% if is_auth %}Reconnect Google Account{% else %}Login with Google{% endif %}
+                        </button>
+                        
+                        {% if has_creds or is_auth %}
+                        <button onclick="logoutGoogle()" class="flex items-center bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-medium py-2 px-4 rounded-md shadow-sm transition">
+                            Logout & Clear Credentials
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </main>
+
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script>
+        // Init
+        var quillOpts = { theme: 'snow', modules: { toolbar: [['bold', 'italic', 'underline'], ['link'], [{'list': 'ordered'}, {'list': 'bullet'}]] }};
+        var mainQuill = new Quill('#main-editor', quillOpts);
+        var followQuill = new Quill('#follow-editor', quillOpts);
+        var globalAction = 'send';
+        var chartInstance = null;
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            document.getElementById('btn-' + tabId).classList.add('active');
+        }
+
+        // Submitting Campaign & Catching Missing Data
+        async function submitCampaign(action) {
+            globalAction = action;
+            if(!document.getElementById('contactsFile').files[0]) return alert("Please upload a contacts file!");
+            
+            document.getElementById('body-hidden').value = mainQuill.root.innerHTML;
+            document.getElementById('follow-hidden').value = followQuill.root.innerHTML;
+
+            const form = document.getElementById('campaignForm');
+            const formData = new FormData(form);
+            formData.append("action", action);
+
+            let response = await fetch('/send', { method: 'POST', body: formData });
+            let result = await response.json();
+
+            if (result.requires_fix) {
+                showMissingDataModal(result.issues);
+            } else if (result.success) {
+                document.getElementById('correctionsInput').value = "{}"; // reset
+                if(action === 'test') { 
+                    alert(result.message); 
+                } 
+                else if (result.scheduled) { 
+                    alert("Campaign Scheduled Successfully!"); 
+                } 
+                else {
+                    document.getElementById('progressBanner').classList.remove('hidden');
+                    trackProgress(result.campaign_id);
+                }
+            } else {
+                alert("Error: " + result.error);
+            }
+        }
+
+        // Missing Data Modal Logic
+        function showMissingDataModal(issues) {
+            let html = issues.map(issue => `
+                <div class="bg-slate-50 p-4 rounded border border-slate-200" data-row="${issue.row_index}">
+                    <p class="font-medium text-slate-800 mb-2">${issue.email}</p>
+                    ${issue.missing.map(key => `
+                        <div class="flex items-center mb-2">
+                            <label class="w-1/3 text-sm text-slate-600 font-medium">{${key}}:</label>
+                            <input type="text" class="w-2/3 border border-slate-300 focus:ring-2 focus:ring-blue-500 rounded px-2 py-1 text-sm correction-input" data-key="${key}" placeholder="Enter value...">
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+            
+            document.getElementById('missingDataList').innerHTML = html;
+            document.getElementById('missingDataModal').classList.remove('hidden');
+        }
+
+        function applyCorrectionsAndResubmit() {
+            let corrections = {};
+            document.querySelectorAll('#missingDataList > div').forEach(rowDiv => {
+                let rowIndex = rowDiv.getAttribute('data-row');
+                corrections[rowIndex] = {};
+                rowDiv.querySelectorAll('.correction-input').forEach(input => {
+                    corrections[rowIndex][input.getAttribute('data-key')] = input.value;
+                });
+            });
+            
+            document.getElementById('correctionsInput').value = JSON.stringify(corrections);
+            document.getElementById('missingDataModal').classList.add('hidden');
+            submitCampaign(globalAction); // Re-submit with fixes
+        }
+
+        // Live Progress
+        function trackProgress(campaign_id) {
+            const interval = setInterval(async () => {
+                let res = await fetch('/progress/' + campaign_id);
+                let data = await res.json();
+                if (data.error) return clearInterval(interval);
+                
+                let percent = (data.sent / data.total) * 100;
+                document.getElementById('progressBar').style.width = percent + '%';
+                document.getElementById('progressCount').innerText = `${data.sent} / ${data.total}`;
+                
+                if (data.status === 'Completed') {
+                    document.getElementById('progressText').innerText = "Campaign Complete! 🎉";
+                    document.getElementById('progressBar').classList.replace('bg-blue-600', 'bg-green-500');
+                    clearInterval(interval);
+                    setTimeout(() => document.getElementById('progressBanner').classList.add('hidden'), 4000);
+                }
+            }, 1000);
+        }
+
+        // Fetch Data for Tabs
+        async function loadData() {
+            let res = await fetch('/api/data');
+            let data = await res.json();
+            
+            // Inbox
+            document.getElementById('inboxContainer').innerHTML = data.inbox.length === 0 ? '<p class="text-slate-500 italic">No replies yet.</p>' : data.inbox.map(i => `
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-l-4 border-l-green-500 hover:shadow-md transition">
+                    <p class="font-bold text-slate-800 text-lg">${i.reply_from}</p>
+                    <p class="text-xs text-slate-500 mb-3 font-medium uppercase tracking-wider">Re: ${i.subject} &bull; ${i.sent_date}</p>
+                    <p class="text-sm text-slate-700 bg-slate-50 p-4 rounded-lg border border-slate-100">"${i.reply_snippet}"</p>
+                </div>
+            `).join('');
+
+            // History
+            document.getElementById('historyTable').innerHTML = data.history.map(h => {
+                let statusClass = "text-slate-600 bg-slate-100";
+                if(h.status.includes('Sent')) statusClass = "text-blue-700 bg-blue-100";
+                if(h.status.includes('Replied')) statusClass = "text-green-700 bg-green-100";
+                if(h.status.includes('Waiting')) statusClass = "text-yellow-700 bg-yellow-100";
+                
+                return `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-4">${h.sent_date || h.scheduled_for || 'Pending'}</td>
+                    <td class="p-4 font-medium text-slate-900">${h.recipient}</td>
+                    <td class="p-4"><span class="px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusClass}">${h.status}</span></td>
+                </tr>
+            `}).join('');
+
+            // Blacklist
+            document.getElementById('blacklistContainer').innerHTML = data.blacklist.length === 0 ? '<p class="p-4 text-slate-500 italic">Your blacklist is empty.</p>' : data.blacklist.map(b => `
+                <li class="p-4 flex justify-between items-center text-sm font-medium hover:bg-slate-50">
+                    <span class="text-slate-800">${b.email}</span>
+                    <button onclick="removeFromBlacklist('${b.email}')" class="text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1 rounded transition">Remove</button>
+                </li>
+            `).join('');
+
+            // Analytics
+            document.getElementById('stat-sent').innerText = data.analytics.sent;
+            document.getElementById('stat-replied').innerText = data.analytics.replied;
+            document.getElementById('stat-followups').innerText = data.analytics.followups;
+            
+            if(chartInstance) chartInstance.destroy();
+            const ctx = document.getElementById('conversionChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Sent (No Reply)', 'Replied', 'Follow-ups Sent'],
+                    datasets: [{ 
+                        data: [Math.max(0, data.analytics.sent - data.analytics.replied), data.analytics.replied, data.analytics.followups], 
+                        backgroundColor: ['#e2e8f0', '#22c55e', '#3b82f6'],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    cutout: '70%',
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+        // Blacklist functions
+        async function addToBlacklist() {
+            let email = document.getElementById('newBlacklistEmail').value;
+            if(!email) return;
+            await fetch('/api/blacklist', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email: email}) });
+            document.getElementById('newBlacklistEmail').value = '';
+            loadData();
+        }
+
+        async function removeFromBlacklist(email) {
+            await fetch('/api/blacklist', { method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email: email}) });
+            loadData();
+        }
+
+        // Auth and Settings functions
+        async function uploadCreds() {
+            try {
+                const fileInput = document.getElementById('credFile');
+                if (!fileInput.files || fileInput.files.length === 0) {
+                    return alert("Please select your credentials.json file first!");
+                }
+                
+                let fd = new FormData(); 
+                fd.append('file', fileInput.files[0]);
+                
+                let res = await fetch('/upload-credentials', { method: 'POST', body: fd });
+                let data = await res.json();
+                
+                if (data.success) { 
+                    alert("✅ Credentials saved securely! You can now Login with Google."); 
+                    window.location.reload(); 
+                } else {
+                    alert("❌ Upload failed: Make sure the file ends in .json");
+                }
+            } catch (e) {
+                alert("❌ A network error occurred: " + e.message);
+            }
+        }
+
+        async function authenticateGoogle() {
+            try {
+                alert("Opening Google Login... Please check your web browser or terminal!");
+                let res = await fetch('/authenticate', { method: 'POST' });
+                let data = await res.json();
+                
+                if (data.success) { 
+                    alert("✅ Logged in successfully!"); 
+                    window.location.reload(); 
+                } else {
+                    alert("❌ Authentication failed: " + data.error);
+                }
+            } catch (e) {
+                alert("❌ A network error occurred: " + e.message);
+            }
+        }
+
+        async function logoutGoogle() {
+            if (!confirm("Are you sure you want to log out? This will completely remove your credentials and session from this app.")) {
+                return;
+            }
+            try {
+                let res = await fetch('/logout', { method: 'POST' });
+                let data = await res.json();
+                
+                if (data.success) { 
+                    alert("✅ Successfully logged out and cleared all credentials."); 
+                    window.location.reload(); 
+                } else {
+                    alert("❌ Logout failed: " + data.error);
+                }
+            } catch (e) {
+                alert("❌ A network error occurred: " + e.message);
+            }
+        }
+    </script>
+</body>
+</html>
