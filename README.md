@@ -1,4 +1,3 @@
-```markdown
 # MergeX Mail Engine
 
 MergeX is a localized mail merge and automation application built with Python and Flask. It allows users to send highly customized email campaigns directly through the Gmail API, featuring automated follow-ups, real-time data validation, and a persistent system tray integration for background processing.
