@@ -65,21 +65,15 @@ def send_email(service, to_email, subject, body_html, attachments=[], thread_id=
     return sent_message['id'], sent_message['threadId'], actual_message_id
 
 def check_if_replied(service, thread_id, my_email):
-    """Checks if the recipient has replied and extracts their message snippet."""
     try:
         thread = service.users().threads().get(userId="me", id=thread_id).execute()
         messages = thread.get("messages", [])
         if len(messages) > 1:
-            # Look at the newest messages first
-            for msg in reversed(messages):
-                headers = msg['payload']['headers']
-                from_email = next((h['value'] for h in headers if h['name'] == 'From'), "")
-                
-                # If the message is NOT from you, it's a reply!
-                if my_email not in from_email:
-                    snippet = msg.get('snippet', 'No preview available...')
-                    return True, snippet, from_email
-        return False, "", ""
-    except Exception as e:
-        print(f"Reply check error: {e}")
-        return False, "", ""
+            last_msg = messages[-1]
+            headers = last_msg['payload']['headers']
+            from_email = next((h['value'] for h in headers if h['name'] == 'From'), "")
+            if my_email not in from_email:
+                return True
+        return False
+    except:
+        return False
